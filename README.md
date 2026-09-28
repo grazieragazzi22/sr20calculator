@@ -5,10 +5,6 @@ Client-side web app for Cirrus SR20 Weight & Balance and performance calculation
 > **⚠️ ALPHA BUILD**  
 > Informational reference only. Does NOT replace official flight planning. Always verify with the official SR20 POH/THB.
 
-## Architecture & File Deep-Dive
-
-The codebase separates UI, network requests, app state, and core math. There is no build step (Webpack/Vite).
-
 ### 1. `index.html` (View Layer)
 * **Role**: Layout and UI binding. Uses Tailwind via CDN. 
 * **Mechanics**: No inline logic other than DOM event triggers (`oninput="calculate()"`, `onclick="fetchMetar()"`). Scripts must be loaded in strict dependency order at the bottom of the `<body>`.
@@ -48,9 +44,3 @@ The codebase separates UI, network requests, app state, and core math. There is 
 
 ## Data Flow
 `User Input / API` → `DOM Fields` → `app.js:calculate()` → `Math & Physics` → `app.js:lookupGrid()` → `perf_data.js` → `DOM Output`
-
-## Local Development & Debugging
-
-1. **Serve Locally**: Browsers block local `file://` cross-origin API requests. Serve the folder via a local web server to test METAR/Airport fetching:
-   ```bash
-   python3 -m http.server 8000
