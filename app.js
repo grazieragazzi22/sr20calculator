@@ -55,6 +55,7 @@ function calculate() {
   document.getElementById("out_wind_comp").innerText = hwc >= 0 ? `${hwc} KTS HW` : `${Math.abs(hwc)} KTS TW`;
   document.getElementById("out_cwc").innerText = cwc;
 
+  // TAKEOFF PERFORMANCE LOOKUP
   const toTable = (typeof DATA_TO3150 !== 'undefined') ? DATA_TO3150 : [];
   const perfTO = lookupGrid(toTable, pa, temp);
 
@@ -68,6 +69,7 @@ function calculate() {
   document.getElementById("out_tor").innerText = tor;
   document.getElementById("out_tod").innerText = tod;
 
+  // LANDING PERFORMANCE LOOKUP
   const ldgTable = (typeof DATA_LDGDISTANCESFLAPS100 !== 'undefined') ? DATA_LDGDISTANCESFLAPS100 : [];
   const perfLDG = lookupGrid(ldgTable, pa, temp);
   let ldr = perfLDG.gndRoll;
@@ -86,6 +88,7 @@ function calculate() {
     document.getElementById("out_perf_status").className = "font-bold text-slate-800";
   }
 
+  // SPEEDS LOOKUP
   const speedsTable = (typeof DATA_TOLDGSPEED !== 'undefined') ? DATA_TOLDGSPEED : [];
   const speeds = lookupSpeeds(speedsTable, tom);
   document.getElementById("out_vr").innerText = speeds.vr;
@@ -93,10 +96,12 @@ function calculate() {
   document.getElementById("out_vref").innerText = speeds.vref100;
   document.getElementById("out_vtgt").innerText = speeds.vref100 + Math.max(0, Math.round(hwc / 2));
 
+  // CLIMB RATE LOOKUP
   const rocTable = (typeof DATA_TOCLBPERFROC !== 'undefined') ? DATA_TOCLBPERFROC : [];
   const roc = lookupROC(rocTable, pa, temp);
   document.getElementById("out_roc").innerText = roc;
 
+  // CRUISE FUEL FLOW LOOKUP
   const cruiseTable = (typeof DATA_CRUISEPERF !== 'undefined') ? DATA_CRUISEPERF : [];
   const ff = lookupCruiseFF(cruiseTable, pa);
   document.getElementById("out_ff").innerText = ff;
@@ -104,29 +109,36 @@ function calculate() {
 
 function lookupGrid(table, targetPA, targetTemp) {
   if (!table || table.length === 0) return { gndRoll: "--", total50: "--" };
+  
   let closest = table[0];
   let minDiff = Infinity;
+  
   for (let row of table) {
-    let diff = Math.abs((row.PRESS_ALT_FT || row.pa || 0) - targetPA) + Math.abs(targetTemp - 20) * 10;
+    let paVal = row.PRESS_ALT_FT !== undefined ? row.PRESS_ALT_FT : (row.pa !== undefined ? row.pa : 0);
+    let diff = Math.abs(paVal - targetPA);
     if (diff < minDiff) {
       minDiff = diff;
       closest = row;
     }
   }
-  return {
-    gndRoll: closest["0_C"] || closest["20_C"] || closest.gndRoll || "--",
-    total50: closest["0_C"] || closest["20_C"] || closest.total50 || "--"
-  };
+
+  let tempKey = targetTemp <= 10 ? "0_C" : (targetTemp <= 30 ? "20_C" : "40_C");
+  
+  let gndRoll = closest[tempKey] || closest["20_C"] || closest["0_C"] || closest.gndRoll || closest.GROUND_ROLL || "--";
+  let total50 = closest[tempKey] || closest["20_C"] || closest["0_C"] || closest.total50 || closest.TOTAL_50FT || gndRoll;
+
+  return { gndRoll, total50 };
 }
 
 function lookupSpeeds(table, weight) {
   if (!table || table.length === 0) return { vr: 65, vlof: 68, vref100: 71 };
   for (let row of table) {
-    if (weight >= (row.WEIGHT_LBS || row.WEIGHT || 0)) {
+    let w = row.WEIGHT_LBS !== undefined ? row.WEIGHT_LBS : (row.WEIGHT || 0);
+    if (weight >= w) {
       return {
-        vr: row.TAKEOFF_FLAPS_50_VR_KIAS || 65,
-        vlof: row.TAKEOFF_FLAPS_50_VLOF_KIAS || 68,
-        vref100: row.LANDING_VREF_FLAPS_100_KIAS || 71
+        vr: row.TAKEOFF_FLAPS_50_VR_KIAS || row.VR || 65,
+        vlof: row.TAKEOFF_FLAPS_50_VLOF_KIAS || row.VLOF || 68,
+        vref100: row.LANDING_VREF_FLAPS_100_KIAS || row.VREF || 71
       };
     }
   }
@@ -135,14 +147,33 @@ function lookupSpeeds(table, weight) {
 
 function lookupROC(table, targetPA, targetTemp) {
   if (!table || table.length === 0) return "--";
-  let match = table.find(r => Math.abs((r.PRESS_ALT_FT || 0) - targetPA) < 1000);
-  return match ? (match["20_C"] || match.ISA || "--") : "--";
+  let closest = table[0];
+  let minDiff = Infinity;
+  for (let row of table) {
+    let paVal = row.PRESS_ALT_FT !== undefined ? row.PRESS_ALT_FT : (row.pa || 0);
+    let diff = Math.abs(paVal - targetPA);
+    if (diff < minDiff) {
+      minDiff = diff;
+      closest = row;
+    }
+  }
+  let tempKey = targetTemp <= 10 ? "0_C" : (targetTemp <= 30 ? "20_C" : "40_C");
+  return closest[tempKey] || closest["20_C"] || closest.ISA || closest.ROC || "--";
 }
 
 function lookupCruiseFF(table, targetPA) {
   if (!table || table.length === 0) return "--";
-  let match = table.find(r => Math.abs((r.PRESS_ALT_FT || 0) - targetPA) < 1000);
-  return match ? (match.ISA_GPH || "--") : "11.0";
+  let closest = table[0];
+  let minDiff = Infinity;
+  for (let row of table) {
+    let paVal = row.PRESS_ALT_FT !== undefined ? row.PRESS_ALT_FT : (row.pa || 0);
+    let diff = Math.abs(paVal - targetPA);
+    if (diff < minDiff) {
+      minDiff = diff;
+      closest = row;
+    }
+  }
+  return closest.ISA_GPH || closest.GPH || closest.FF || "11.0";
 }
 
 // Initial calculation on script load
