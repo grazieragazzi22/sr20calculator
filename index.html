@@ -7,8 +7,39 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="perf_data.js"></script>
 </head>
-<body class="bg-slate-100 p-6 text-slate-800">
-  <div class="max-w-5xl mx-auto bg-white p-6 rounded-xl shadow-md space-y-6">
+<body class="bg-slate-100 text-slate-800 flex flex-col min-h-screen">
+
+  <!-- MANDATORY DISCLAIMER MODAL -->
+  <div id="disclaimer-modal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div class="bg-white max-w-lg w-full rounded-xl shadow-2xl border border-amber-200 p-6 space-y-4">
+      <div class="flex items-center space-x-3 text-amber-600">
+        <svg class="w-8 h-8 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+        </svg>
+        <h2 class="text-xl font-bold text-slate-900">Alpha Build Notice</h2>
+      </div>
+
+      <div class="text-sm text-slate-600 space-y-2">
+        <p>This software is an <strong>Alpha version</strong> provided solely for educational and informational reference.</p>
+        <p class="font-semibold text-slate-800">
+          It does NOT replace official flight planning. The Pilot in Command (PIC) is strictly required to verify all Weight & Balance and performance figures against the official Cirrus SR20 Pilot's Operating Handbook (POH) and Training Handbook (THB).
+        </p>
+      </div>
+
+      <div class="pt-2">
+        <button onclick="dismissDisclaimer()" class="w-full bg-blue-900 hover:bg-blue-800 text-white font-semibold py-2.5 px-4 rounded-lg transition shadow-md">
+          I Understand & Accept (Proceed to Calculator)
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOP BANNER -->
+  <div class="bg-amber-500 text-slate-950 text-xs font-semibold px-4 py-1.5 text-center shadow-sm">
+    ALPHA VERSION — FOR REFERENCE ONLY. ALWAYS VERIFY WITH OFFICIAL POH & THB.
+  </div>
+
+  <div class="max-w-5xl mx-auto bg-white p-6 rounded-xl shadow-md space-y-6 my-6 flex-grow w-full">
     <h1 class="text-2xl font-bold text-blue-900 border-b pb-2">SR20 Performance & W&B Calculator</h1>
 
     <!-- INPUT SECTION -->
@@ -54,7 +85,6 @@
         <div class="flex justify-between items-center flex-wrap gap-2">
           <h2 class="font-bold text-sm text-slate-700">2. Environment & Runway Conditions</h2>
           
-          <!-- AIRPORT & METAR AUTO-FETCH BAR -->
           <div class="flex items-center space-x-2">
             <input type="text" id="icao" value="KGYR" placeholder="ICAO Code" class="uppercase border p-1 rounded text-xs w-20 text-center font-bold">
             <button onclick="fetchAirportData()" id="apt_btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs px-2.5 py-1 rounded transition">
@@ -153,20 +183,37 @@
       </div>
     </div>
 
-    <!-- DEBUG / ACTIVITY LOG CONSOLE -->
+    <!-- DEBUG CONSOLE -->
     <div class="border-t pt-4">
       <div class="flex justify-between items-center mb-1">
         <h2 class="text-xs font-bold text-slate-500 uppercase tracking-wider">API Activity & Debug Log</h2>
         <button onclick="clearLog()" class="text-xs text-slate-400 hover:text-slate-600 underline">Clear Log</button>
       </div>
-      <div id="debug_log" class="bg-slate-900 text-green-400 font-mono text-xs p-3 rounded-lg h-36 overflow-y-auto space-y-1">
+      <div id="debug_log" class="bg-slate-900 text-green-400 font-mono text-xs p-3 rounded-lg h-32 overflow-y-auto space-y-1">
         <div>[SYSTEM] Log console initialized. Ready.</div>
       </div>
     </div>
 
   </div>
 
+  <footer class="text-center text-xs text-slate-400 pb-6 border-t pt-4 bg-slate-50">
+    <p><strong>SR20 Performance Calculator (Alpha Build)</strong></p>
+    <p>For reference only. The official Cirrus SR20 Pilot's Operating Handbook (POH) and Training Handbook (THB) remain the binding authority.</p>
+  </footer>
+
   <script>
+    // DISCLAIMER LOGIC
+    function dismissDisclaimer() {
+      document.getElementById('disclaimer-modal').classList.add('hidden');
+      sessionStorage.setItem('disclaimerDismissed', 'true');
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      if (sessionStorage.getItem('disclaimerDismissed') === 'true') {
+        document.getElementById('disclaimer-modal').classList.add('hidden');
+      }
+    });
+
     // LOGGER HELPER
     function logMsg(msg, type = 'info') {
       const logBox = document.getElementById("debug_log");
@@ -186,7 +233,7 @@
       document.getElementById("debug_log").innerHTML = `<div>[SYSTEM] Log cleared.</div>`;
     }
 
-    // AIRPORT DATA FETCHER WITH MULTI-PROXY FALLBACK LOGGING
+    // AIRPORT DATA FETCHER
     async function fetchAirportData() {
       const icao = document.getElementById("icao").value.trim().toUpperCase();
       const statusEl = document.getElementById("status_msg");
@@ -199,7 +246,6 @@
       statusEl.innerText = `Loading airport data for ${icao}...`;
       btn.disabled = true;
 
-      // 1. Local Database Lookup
       if (typeof AIRPORTS !== 'undefined' && AIRPORTS[icao]) {
         logMsg(`Found ${icao} in local AIRPORTS database!`);
         const apt = AIRPORTS[icao];
@@ -229,13 +275,11 @@
 
       logMsg(`Not found in local DB. Querying FAA API...`, 'warn');
 
-      // 2. Multi-URL Attempt Chain
       const faaIdent = icao.length === 4 && icao.startsWith("K") ? icao.substring(1) : icao;
       const targetUrl = `https://av-info.faa.gov/api/v2/airport/ident/${faaIdent}`;
       const urlsToTry = [
         targetUrl,
-        `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`,
-        `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`
+        `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`
       ];
 
       let success = false;
@@ -286,7 +330,7 @@
       if (!success) {
         statusEl.innerText = `Could not fetch FAA data. Enter runway specs manually.`;
         statusEl.className = "text-xs text-red-500 font-semibold";
-        logMsg(`FAA Import failed across all endpoints for ${icao}.`, 'error');
+        logMsg(`FAA Import failed for ${icao}.`, 'error');
       }
 
       btn.disabled = false;
@@ -302,7 +346,7 @@
       }
     }
 
-    // DIRECT METAR FETCHER WITH DETAILED LOGGING
+    // DIRECT METAR FETCHER
     async function fetchMetar() {
       const icaoInput = document.getElementById("icao").value.trim().toUpperCase();
       const statusEl = document.getElementById("status_msg");
@@ -317,8 +361,7 @@
 
       const metarUrls = [
         `https://metar.vatsim.net/${icaoInput}`,
-        `https://aviationweather.gov/api/data/metar?ids=${icaoInput}&format=json`,
-        `https://corsproxy.io/?${encodeURIComponent(`https://aviationweather.gov/api/data/metar?ids=${icaoInput}&format=json`)}`
+        `https://aviationweather.gov/api/data/metar?ids=${icaoInput}&format=json`
       ];
 
       let rawMetar = "";
@@ -361,7 +404,6 @@
     function parseAndApplyMetar(raw) {
       logMsg("Parsing METAR strings...");
 
-      // Temp
       const tempMatch = raw.match(/\b(M?\d{2})\/(M?\d{2})?\b/);
       if (tempMatch) {
         let t = tempMatch[1].replace("M", "-");
@@ -369,7 +411,6 @@
         logMsg(`Parsed Temp: ${t}°C`);
       }
 
-      // Altimeter
       const altMatch = raw.match(/\b([AQ])(\d{4})\b/);
       if (altMatch) {
         const type = altMatch[1];
@@ -381,7 +422,6 @@
         logMsg(`Parsed Altimeter: ${qnhVal} inHg`);
       }
 
-      // Winds
       const windMatch = raw.match(/\b(\d{3}|VRB)(\d{2,3})(G\d{2,3})?KT\b/);
       if (windMatch) {
         const wdir = windMatch[1] === "VRB" ? 0 : parseInt(windMatch[1], 10);
