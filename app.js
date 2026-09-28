@@ -55,14 +55,9 @@ function calculate() {
   document.getElementById("out_wind_comp").innerText = hwc >= 0 ? `${hwc} KTS HW` : `${Math.abs(hwc)} KTS TW`;
   document.getElementById("out_cwc").innerText = cwc;
 
-  // --- DEBUG LOGGING START ---
-  console.log(`[CALC] Target PA: ${Math.round(pa)} FT | Target Temp: ${temp}°C | TOM: ${tom.toFixed(1)} lbs`);
-
+  // TAKEOFF PERFORMANCE LOOKUP
   const toTable = (typeof DATA_TO3150 !== 'undefined') ? DATA_TO3150 : [];
-  console.log(`[CALC] Loaded TO Table. Length: ${toTable.length}`);
-  if (toTable.length === 0 && typeof logMsg === 'function') logMsg("TO Table is missing or empty!", "error");
-  
-  const perfTO = lookupGrid(toTable, pa, temp, "TAKEOFF");
+  const perfTO = lookupGrid(toTable, pa, temp);
 
   let tor = perfTO.gndRoll;
   let tod = perfTO.total50;
@@ -74,11 +69,9 @@ function calculate() {
   document.getElementById("out_tor").innerText = tor;
   document.getElementById("out_tod").innerText = tod;
 
+  // LANDING PERFORMANCE LOOKUP
   const ldgTable = (typeof DATA_LDGDISTANCESFLAPS100 !== 'undefined') ? DATA_LDGDISTANCESFLAPS100 : [];
-  console.log(`[CALC] Loaded LDG Table. Length: ${ldgTable.length}`);
-  if (ldgTable.length === 0 && typeof logMsg === 'function') logMsg("LDG Table is missing or empty!", "error");
-
-  const perfLDG = lookupGrid(ldgTable, pa, temp, "LANDING");
+  const perfLDG = lookupGrid(ldgTable, pa, temp);
   let ldr = perfLDG.gndRoll;
   document.getElementById("out_ldr").innerText = ldr;
 
@@ -95,6 +88,7 @@ function calculate() {
     document.getElementById("out_perf_status").className = "font-bold text-slate-800";
   }
 
+  // SPEEDS LOOKUP
   const speedsTable = (typeof DATA_TOLDGSPEED !== 'undefined') ? DATA_TOLDGSPEED : [];
   const speeds = lookupSpeeds(speedsTable, tom);
   document.getElementById("out_vr").innerText = speeds.vr;
@@ -102,102 +96,129 @@ function calculate() {
   document.getElementById("out_vref").innerText = speeds.vref100;
   document.getElementById("out_vtgt").innerText = speeds.vref100 + Math.max(0, Math.round(hwc / 2));
 
+  // CLIMB RATE LOOKUP
   const rocTable = (typeof DATA_TOCLBPERFROC !== 'undefined') ? DATA_TOCLBPERFROC : [];
   document.getElementById("out_roc").innerText = lookupROC(rocTable, pa, temp);
 
+  // CRUISE FUEL FLOW LOOKUP
   const cruiseTable = (typeof DATA_CRUISEPERF !== 'undefined') ? DATA_CRUISEPERF : [];
   document.getElementById("out_ff").innerText = lookupCruiseFF(cruiseTable, pa);
 }
 
-function lookupGrid(table, targetPA, targetTemp, debugName = "GRID") {
+function lookupGrid(table, targetPA, targetTemp) {
   if (!table || table.length === 0) return { gndRoll: "--", total50: "--" };
   
-  let closest = table[0];
-  let minDiff = Infinity;
-  let foundPA = null;
+  // Calculate nearest 10-degree increment for columns (0, 10, 20, 30, 40, 50)
+  let roundedTemp = Math.round(targetTemp / 10) * 10;
+  if (roundedTemp < 0) roundedTemp = 0;
+  if (roundedTemp > 50) roundedTemp = 50;
+  let tempKey = roundedTemp + "_C";
+
+  let closestGndRow = null;
+  let closestTotalRow = null;
+  let minDiffGnd = Infinity;
+  let minDiffTotal = Infinity;
   
   for (let row of table) {
-    let paVal = row.PRESS_ALT_FT !== undefined ? row.PRESS_ALT_FT : (row.pa || 0);
+    let paVal = parseFloat(row.PRESS_ALT_FT);
+    if (isNaN(paVal)) continue;
+
     let diff = Math.abs(paVal - targetPA);
-    if (diff < minDiff) {
-      minDiff = diff;
-      closest = row;
-      foundPA = paVal;
+
+    // The JSON splits Gnd Roll and Total 50ft into separate rows
+    if (row.DISTANCE_TYPE === "Gnd Roll" && diff < minDiffGnd) {
+      minDiffGnd = diff;
+      closestGndRow = row;
+    } else if (row.DISTANCE_TYPE === "Total Over 50FT" && diff < minDiffTotal) {
+      minDiffTotal = diff;
+      closestTotalRow = row;
     }
   }
 
-  let tempKey = targetTemp <= 10 ? "0_C" : (targetTemp <= 30 ? "20_C" : "40_C");
-  
-  console.log(`[LOOKUP ${debugName}] Target PA: ${Math.round(targetPA)} -> Matched PA row: ${foundPA}`);
-  console.log(`[LOOKUP ${debugName}] Target Temp: ${targetTemp} -> Using column key: ${tempKey}`);
-  console.log(`[LOOKUP ${debugName}] Row object available data:`, closest);
+  let gndRoll = closestGndRow ? closestGndRow[tempKey] : "--";
+  let total50 = closestTotalRow ? closestTotalRow[tempKey] : "--";
 
-  let gndRoll = "--";
-  let total50 = "--";
-
-  // Check Nested Object (e.g. row["20_C"].gndRoll)
-  if (closest[tempKey] && typeof closest[tempKey] === 'object') {
-    console.log(`[LOOKUP ${debugName}] Found nested object for ${tempKey}`);
-    gndRoll = closest[tempKey].gndRoll || closest[tempKey].GROUND_ROLL || "--";
-    total50 = closest[tempKey].total50 || closest[tempKey].TOTAL_50FT || "--";
-  } else {
-    // Check Flat Structure (e.g. row["20_C_GND_ROLL"])
-    console.log(`[LOOKUP ${debugName}] Checking flat structure keys...`);
-    gndRoll = closest[`${tempKey}_GND_ROLL`] || closest.gndRoll || closest.GROUND_ROLL || "--";
-    total50 = closest[`${tempKey}_TOTAL_50`] || closest.total50 || closest.TOTAL_50FT || "--";
-  }
-
-  if (gndRoll === "--" && typeof logMsg === 'function') {
-    logMsg(`${debugName} parsing failed for PA ${foundPA}. Keys mismatch.`, "error");
-  }
+  // Fallback to ISA column if the selected temp cell is missing/NaN
+  if (gndRoll === undefined || isNaN(gndRoll)) gndRoll = closestGndRow ? closestGndRow["ISA"] : "--";
+  if (total50 === undefined || isNaN(total50)) total50 = closestTotalRow ? closestTotalRow["ISA"] : "--";
 
   return { gndRoll, total50 };
 }
 
 function lookupSpeeds(table, weight) {
   if (!table || table.length === 0) return { vr: 65, vlof: 68, vref100: 71 };
+  
+  let closest = table[0];
+  let minDiff = Infinity;
+  
   for (let row of table) {
-    let w = row.WEIGHT_LBS !== undefined ? row.WEIGHT_LBS : (row.WEIGHT || 0);
-    if (weight >= w) {
-      return {
-        vr: row.TAKEOFF_FLAPS_50_VR_KIAS || row.VR || 65,
-        vlof: row.TAKEOFF_FLAPS_50_VLOF_KIAS || row.VLOF || 68,
-        vref100: row.LANDING_VREF_FLAPS_100_KIAS || row.VREF || 71
-      };
+    let w = parseFloat(row.WEIGHT_LBS);
+    if (isNaN(w)) continue;
+    
+    let diff = Math.abs(w - weight);
+    if (diff < minDiff) {
+      minDiff = diff;
+      closest = row;
     }
   }
-  return { vr: 71, vlof: 75, vref100: 78 };
+  
+  return {
+    vr: closest.TAKEOFF_FLAPS_50_VR_KIAS || 65,
+    vlof: closest.TAKEOFF_FLAPS_50_VLOF_KIAS || 68,
+    vref100: closest.LANDING_VREF_FLAPS_100_KIAS || 71
+  };
 }
 
 function lookupROC(table, targetPA, targetTemp) {
   if (!table || table.length === 0) return "--";
+  
+  let roundedTemp = Math.round(targetTemp / 10) * 10;
+  if (roundedTemp < -20) roundedTemp = -20;
+  if (roundedTemp > 50) roundedTemp = 50;
+  let tempKey = roundedTemp < 0 ? `MINUS_${Math.abs(roundedTemp)}_C` : `${roundedTemp}_C`;
+
   let closest = table[0];
   let minDiff = Infinity;
+  
   for (let row of table) {
-    let paVal = row.PRESS_ALT_FT !== undefined ? row.PRESS_ALT_FT : (row.pa || 0);
+    // Only parse ROC for Max Gross Weight (3150 lbs)
+    let w = parseFloat(row.WEIGHT_LB);
+    if (w !== 3150 || isNaN(w)) continue;
+
+    let paVal = parseFloat(row.PRESS_ALT_FT);
+    if (isNaN(paVal)) continue;
+
     let diff = Math.abs(paVal - targetPA);
     if (diff < minDiff) {
       minDiff = diff;
       closest = row;
     }
   }
-  let tempKey = targetTemp <= 10 ? "0_C" : (targetTemp <= 30 ? "20_C" : "40_C");
-  return closest[`${tempKey}_ROC`] || closest[tempKey] || closest.ISA || closest.ROC || "--";
+  
+  let roc = closest[tempKey];
+  if (roc === undefined || isNaN(roc)) roc = closest["ISA"];
+  
+  return roc !== undefined && !isNaN(roc) ? roc : "--";
 }
 
 function lookupCruiseFF(table, targetPA) {
   if (!table || table.length === 0) return "--";
+  
   let closest = table[0];
   let minDiff = Infinity;
+  
   for (let row of table) {
-    let paVal = row.PRESS_ALT_FT !== undefined ? row.PRESS_ALT_FT : (row.pa || 0);
+    let paVal = parseFloat(row.PRESS_ALT_FT);
+    if (isNaN(paVal)) continue;
+
     let diff = Math.abs(paVal - targetPA);
     if (diff < minDiff) {
       minDiff = diff;
       closest = row;
     }
   }
-  return closest.ISA_GPH || closest.GPH || closest.FF || "11.0";
+  
+  return closest.ISA_GPH !== undefined && !isNaN(closest.ISA_GPH) ? closest.ISA_GPH : "--";
 }
 
 // Init
