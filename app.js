@@ -55,7 +55,7 @@ function calculate() {
   document.getElementById("out_wind_comp").innerText = hwc >= 0 ? `${hwc} KTS HW` : `${Math.abs(hwc)} KTS TW`;
   document.getElementById("out_cwc").innerText = cwc;
 
-  // TAKEOFF PERFORMANCE LOOKUP
+  // PERFORMANCE LOOKUPS
   const toTable = (typeof DATA_TO3150 !== 'undefined') ? DATA_TO3150 : [];
   const perfTO = lookupGrid(toTable, pa, temp);
 
@@ -69,7 +69,6 @@ function calculate() {
   document.getElementById("out_tor").innerText = tor;
   document.getElementById("out_tod").innerText = tod;
 
-  // LANDING PERFORMANCE LOOKUP
   const ldgTable = (typeof DATA_LDGDISTANCESFLAPS100 !== 'undefined') ? DATA_LDGDISTANCESFLAPS100 : [];
   const perfLDG = lookupGrid(ldgTable, pa, temp);
   let ldr = perfLDG.gndRoll;
@@ -88,7 +87,6 @@ function calculate() {
     document.getElementById("out_perf_status").className = "font-bold text-slate-800";
   }
 
-  // SPEEDS LOOKUP
   const speedsTable = (typeof DATA_TOLDGSPEED !== 'undefined') ? DATA_TOLDGSPEED : [];
   const speeds = lookupSpeeds(speedsTable, tom);
   document.getElementById("out_vr").innerText = speeds.vr;
@@ -96,15 +94,11 @@ function calculate() {
   document.getElementById("out_vref").innerText = speeds.vref100;
   document.getElementById("out_vtgt").innerText = speeds.vref100 + Math.max(0, Math.round(hwc / 2));
 
-  // CLIMB RATE LOOKUP
   const rocTable = (typeof DATA_TOCLBPERFROC !== 'undefined') ? DATA_TOCLBPERFROC : [];
-  const roc = lookupROC(rocTable, pa, temp);
-  document.getElementById("out_roc").innerText = roc;
+  document.getElementById("out_roc").innerText = lookupROC(rocTable, pa, temp);
 
-  // CRUISE FUEL FLOW LOOKUP
   const cruiseTable = (typeof DATA_CRUISEPERF !== 'undefined') ? DATA_CRUISEPERF : [];
-  const ff = lookupCruiseFF(cruiseTable, pa);
-  document.getElementById("out_ff").innerText = ff;
+  document.getElementById("out_ff").innerText = lookupCruiseFF(cruiseTable, pa);
 }
 
 function lookupGrid(table, targetPA, targetTemp) {
@@ -114,7 +108,7 @@ function lookupGrid(table, targetPA, targetTemp) {
   let minDiff = Infinity;
   
   for (let row of table) {
-    let paVal = row.PRESS_ALT_FT !== undefined ? row.PRESS_ALT_FT : (row.pa !== undefined ? row.pa : 0);
+    let paVal = row.PRESS_ALT_FT !== undefined ? row.PRESS_ALT_FT : (row.pa || 0);
     let diff = Math.abs(paVal - targetPA);
     if (diff < minDiff) {
       minDiff = diff;
@@ -124,10 +118,19 @@ function lookupGrid(table, targetPA, targetTemp) {
 
   let tempKey = targetTemp <= 10 ? "0_C" : (targetTemp <= 30 ? "20_C" : "40_C");
   
-  let gndRoll = closest[tempKey] || closest["20_C"] || closest["0_C"] || closest.gndRoll || closest.GROUND_ROLL || "--";
-  let total50 = closest[tempKey] || closest["20_C"] || closest["0_C"] || closest.total50 || closest.TOTAL_50FT || gndRoll;
+  // Nested Object Fallback
+  if (closest[tempKey] && typeof closest[tempKey] === 'object') {
+    return {
+      gndRoll: closest[tempKey].gndRoll || closest[tempKey].GROUND_ROLL || "--",
+      total50: closest[tempKey].total50 || closest[tempKey].TOTAL_50FT || "--"
+    };
+  }
 
-  return { gndRoll, total50 };
+  // Flat Structure Fallback
+  let gnd = closest[`${tempKey}_GND_ROLL`] || closest.gndRoll || closest.GROUND_ROLL || "--";
+  let t50 = closest[`${tempKey}_TOTAL_50`] || closest.total50 || closest.TOTAL_50FT || "--";
+
+  return { gndRoll: gnd, total50: t50 };
 }
 
 function lookupSpeeds(table, weight) {
@@ -158,7 +161,7 @@ function lookupROC(table, targetPA, targetTemp) {
     }
   }
   let tempKey = targetTemp <= 10 ? "0_C" : (targetTemp <= 30 ? "20_C" : "40_C");
-  return closest[tempKey] || closest["20_C"] || closest.ISA || closest.ROC || "--";
+  return closest[`${tempKey}_ROC`] || closest[tempKey] || closest.ISA || closest.ROC || "--";
 }
 
 function lookupCruiseFF(table, targetPA) {
@@ -176,5 +179,5 @@ function lookupCruiseFF(table, targetPA) {
   return closest.ISA_GPH || closest.GPH || closest.FF || "11.0";
 }
 
-// Initial calculation on script load
+// Init
 calculate();
