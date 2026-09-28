@@ -55,9 +55,14 @@ function calculate() {
   document.getElementById("out_wind_comp").innerText = hwc >= 0 ? `${hwc} KTS HW` : `${Math.abs(hwc)} KTS TW`;
   document.getElementById("out_cwc").innerText = cwc;
 
-  // PERFORMANCE LOOKUPS
+  // --- DEBUG LOGGING START ---
+  console.log(`[CALC] Target PA: ${Math.round(pa)} FT | Target Temp: ${temp}°C | TOM: ${tom.toFixed(1)} lbs`);
+
   const toTable = (typeof DATA_TO3150 !== 'undefined') ? DATA_TO3150 : [];
-  const perfTO = lookupGrid(toTable, pa, temp);
+  console.log(`[CALC] Loaded TO Table. Length: ${toTable.length}`);
+  if (toTable.length === 0 && typeof logMsg === 'function') logMsg("TO Table is missing or empty!", "error");
+  
+  const perfTO = lookupGrid(toTable, pa, temp, "TAKEOFF");
 
   let tor = perfTO.gndRoll;
   let tod = perfTO.total50;
@@ -70,7 +75,10 @@ function calculate() {
   document.getElementById("out_tod").innerText = tod;
 
   const ldgTable = (typeof DATA_LDGDISTANCESFLAPS100 !== 'undefined') ? DATA_LDGDISTANCESFLAPS100 : [];
-  const perfLDG = lookupGrid(ldgTable, pa, temp);
+  console.log(`[CALC] Loaded LDG Table. Length: ${ldgTable.length}`);
+  if (ldgTable.length === 0 && typeof logMsg === 'function') logMsg("LDG Table is missing or empty!", "error");
+
+  const perfLDG = lookupGrid(ldgTable, pa, temp, "LANDING");
   let ldr = perfLDG.gndRoll;
   document.getElementById("out_ldr").innerText = ldr;
 
@@ -101,11 +109,12 @@ function calculate() {
   document.getElementById("out_ff").innerText = lookupCruiseFF(cruiseTable, pa);
 }
 
-function lookupGrid(table, targetPA, targetTemp) {
+function lookupGrid(table, targetPA, targetTemp, debugName = "GRID") {
   if (!table || table.length === 0) return { gndRoll: "--", total50: "--" };
   
   let closest = table[0];
   let minDiff = Infinity;
+  let foundPA = null;
   
   for (let row of table) {
     let paVal = row.PRESS_ALT_FT !== undefined ? row.PRESS_ALT_FT : (row.pa || 0);
@@ -113,24 +122,36 @@ function lookupGrid(table, targetPA, targetTemp) {
     if (diff < minDiff) {
       minDiff = diff;
       closest = row;
+      foundPA = paVal;
     }
   }
 
   let tempKey = targetTemp <= 10 ? "0_C" : (targetTemp <= 30 ? "20_C" : "40_C");
   
-  // Nested Object Fallback
+  console.log(`[LOOKUP ${debugName}] Target PA: ${Math.round(targetPA)} -> Matched PA row: ${foundPA}`);
+  console.log(`[LOOKUP ${debugName}] Target Temp: ${targetTemp} -> Using column key: ${tempKey}`);
+  console.log(`[LOOKUP ${debugName}] Row object available data:`, closest);
+
+  let gndRoll = "--";
+  let total50 = "--";
+
+  // Check Nested Object (e.g. row["20_C"].gndRoll)
   if (closest[tempKey] && typeof closest[tempKey] === 'object') {
-    return {
-      gndRoll: closest[tempKey].gndRoll || closest[tempKey].GROUND_ROLL || "--",
-      total50: closest[tempKey].total50 || closest[tempKey].TOTAL_50FT || "--"
-    };
+    console.log(`[LOOKUP ${debugName}] Found nested object for ${tempKey}`);
+    gndRoll = closest[tempKey].gndRoll || closest[tempKey].GROUND_ROLL || "--";
+    total50 = closest[tempKey].total50 || closest[tempKey].TOTAL_50FT || "--";
+  } else {
+    // Check Flat Structure (e.g. row["20_C_GND_ROLL"])
+    console.log(`[LOOKUP ${debugName}] Checking flat structure keys...`);
+    gndRoll = closest[`${tempKey}_GND_ROLL`] || closest.gndRoll || closest.GROUND_ROLL || "--";
+    total50 = closest[`${tempKey}_TOTAL_50`] || closest.total50 || closest.TOTAL_50FT || "--";
   }
 
-  // Flat Structure Fallback
-  let gnd = closest[`${tempKey}_GND_ROLL`] || closest.gndRoll || closest.GROUND_ROLL || "--";
-  let t50 = closest[`${tempKey}_TOTAL_50`] || closest.total50 || closest.TOTAL_50FT || "--";
+  if (gndRoll === "--" && typeof logMsg === 'function') {
+    logMsg(`${debugName} parsing failed for PA ${foundPA}. Keys mismatch.`, "error");
+  }
 
-  return { gndRoll: gnd, total50: t50 };
+  return { gndRoll, total50 };
 }
 
 function lookupSpeeds(table, weight) {
