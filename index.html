@@ -77,6 +77,7 @@
             <label class="block text-xs font-semibold">Select Runway</label>
             <select id="rwy_select" onchange="selectRunway()" class="w-full border p-1 rounded bg-white text-xs font-semibold">
               <option value="210,8500">Rwy 03/21 (8500 FT)</option>
+              <option value="custom">Custom Runway...</option>
             </select>
           </div>
           <div>
@@ -154,6 +155,29 @@
   </div>
 
   <script>
+    // Universal fetch helper with CORS proxy fallback
+    async function fetchWithProxy(targetUrl) {
+      // 1. Direct fetch
+      try {
+        const res = await fetch(targetUrl);
+        if (res.ok) return await res.json();
+      } catch (e) {}
+
+      // 2. Corsproxy.io
+      try {
+        const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(targetUrl)}`);
+        if (res.ok) return await res.json();
+      } catch (e) {}
+
+      // 3. Allorigins fallback
+      try {
+        const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`);
+        if (res.ok) return await res.json();
+      } catch (e) {}
+
+      throw new Error("All fetch attempts failed.");
+    }
+
     // FAA AIRPORT DATA FETCHER
     async function fetchAirportData() {
       const icao = document.getElementById("icao").value.trim().toUpperCase();
@@ -170,11 +194,7 @@
 
       try {
         const url = `https://av-info.faa.gov/api/v2/airport/ident/${faaIdent}`;
-        const response = await fetch(url);
-
-        if (!response.ok) throw new Error("FAA API unavailable.");
-
-        const data = await response.json();
+        const data = await fetchWithProxy(url);
 
         if (data && data.airport) {
           const apt = data.airport;
@@ -197,6 +217,12 @@
               rwySelect.appendChild(opt1);
             });
 
+            // Add Custom option
+            const customOpt = document.createElement("option");
+            customOpt.value = "custom";
+            customOpt.innerText = "Custom Runway...";
+            rwySelect.appendChild(customOpt);
+
             selectRunway();
           }
 
@@ -208,7 +234,7 @@
         }
       } catch (e) {
         console.error("FAA Data Fetch Error:", e);
-        statusEl.innerText = `Could not load FAA airport data. Check internet or enter manually.`;
+        statusEl.innerText = `Could not load FAA airport data. Enter manually.`;
         statusEl.className = "text-xs text-red-500 font-semibold";
       } finally {
         btn.disabled = false;
@@ -217,7 +243,7 @@
 
     function selectRunway() {
       const val = document.getElementById("rwy_select").value;
-      if (val) {
+      if (val && val !== "custom") {
         const [hdg, len] = val.split(",");
         document.getElementById("rwy_hdg").value = hdg;
         document.getElementById("rwy_len").value = len;
@@ -239,41 +265,37 @@
 
       try {
         const url = `https://aviationweather.gov/api/data/metar?ids=${icaoInput}&format=json`;
-        let response = await fetch(url);
+        const data = await fetchWithProxy(url);
 
-        if (response.ok) {
-          const data = await response.json();
-          if (data && data.length > 0) {
-            const metar = data[0];
+        if (data && data.length > 0) {
+          const metar = data[0];
 
-            if (metar.temp !== undefined) {
-              document.getElementById("temp").value = Math.round(metar.temp);
-            }
-
-            if (metar.altim) {
-              const qnh = metar.altim > 100 ? (metar.altim * 0.0295301).toFixed(2) : metar.altim.toFixed(2);
-              document.getElementById("qnh").value = qnh;
-            }
-
-            // Regex parsing of raw METAR string to isolate sustained wind from gusts
-            const raw = metar.rawOb || "";
-            const windMatch = raw.match(/\b(\d{3}|VRB)(\d{2,3})(G\d{2,3})?KT\b/);
-
-            if (windMatch) {
-              const wdir = windMatch[1] === "VRB" ? 0 : parseInt(windMatch[1], 10);
-              const wspd = parseInt(windMatch[2], 10);
-              document.getElementById("wind_dir").value = wdir;
-              document.getElementById("wind_spd").value = wspd;
-            } else {
-              if (metar.wdir !== undefined) document.getElementById("wind_dir").value = metar.wdir === "VRB" ? 0 : metar.wdir;
-              if (metar.wspd !== undefined) document.getElementById("wind_spd").value = metar.wspd;
-            }
-
-            statusEl.innerText = `METAR Imported: ${raw}`;
-            statusEl.className = "text-xs text-green-600 font-semibold";
-            calculate();
-            return;
+          if (metar.temp !== undefined) {
+            document.getElementById("temp").value = Math.round(metar.temp);
           }
+
+          if (metar.altim) {
+            const qnh = metar.altim > 100 ? (metar.altim * 0.0295301).toFixed(2) : metar.altim.toFixed(2);
+            document.getElementById("qnh").value = qnh;
+          }
+
+          const raw = metar.rawOb || "";
+          const windMatch = raw.match(/\b(\d{3}|VRB)(\d{2,3})(G\d{2,3})?KT\b/);
+
+          if (windMatch) {
+            const wdir = windMatch[1] === "VRB" ? 0 : parseInt(windMatch[1], 10);
+            const wspd = parseInt(windMatch[2], 10);
+            document.getElementById("wind_dir").value = wdir;
+            document.getElementById("wind_spd").value = wspd;
+          } else {
+            if (metar.wdir !== undefined) document.getElementById("wind_dir").value = metar.wdir === "VRB" ? 0 : metar.wdir;
+            if (metar.wspd !== undefined) document.getElementById("wind_spd").value = metar.wspd;
+          }
+
+          statusEl.innerText = `METAR Imported: ${raw}`;
+          statusEl.className = "text-xs text-green-600 font-semibold";
+          calculate();
+          return;
         }
 
         statusEl.innerText = `Station ${icaoInput} not found or no current METAR available.`;
@@ -281,7 +303,7 @@
 
       } catch (error) {
         console.error("METAR Fetch Error:", error);
-        statusEl.innerText = `Unable to fetch METAR automatically. Check connection or enter weather manually.`;
+        statusEl.innerText = `Unable to fetch METAR automatically. Enter weather manually.`;
         statusEl.className = "text-xs text-red-500 font-semibold";
       } finally {
         btn.disabled = false;
@@ -363,7 +385,6 @@
       let ldr = perfLDG.gndRoll;
       document.getElementById("out_ldr").innerText = ldr;
 
-      // Runway Performance Check
       if (tod !== "--" && ldr !== "--" && rwyLen > 0) {
         if (tod <= rwyLen && ldr <= rwyLen) {
           document.getElementById("out_perf_status").innerText = "OK (Within Limits)";
