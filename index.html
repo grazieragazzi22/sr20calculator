@@ -152,33 +152,41 @@
         </div>
       </div>
     </div>
+
+    <!-- DEBUG / ACTIVITY LOG CONSOLE -->
+    <div class="border-t pt-4">
+      <div class="flex justify-between items-center mb-1">
+        <h2 class="text-xs font-bold text-slate-500 uppercase tracking-wider">API Activity & Debug Log</h2>
+        <button onclick="clearLog()" class="text-xs text-slate-400 hover:text-slate-600 underline">Clear Log</button>
+      </div>
+      <div id="debug_log" class="bg-slate-900 text-green-400 font-mono text-xs p-3 rounded-lg h-36 overflow-y-auto space-y-1">
+        <div>[SYSTEM] Log console initialized. Ready.</div>
+      </div>
+    </div>
+
   </div>
 
   <script>
-    // Universal fetch helper with CORS proxy fallback
-    async function fetchWithProxy(targetUrl) {
-      // 1. Direct fetch
-      try {
-        const res = await fetch(targetUrl);
-        if (res.ok) return await res.json();
-      } catch (e) {}
+    // LOGGER HELPER
+    function logMsg(msg, type = 'info') {
+      const logBox = document.getElementById("debug_log");
+      const time = new Date().toLocaleTimeString();
+      let colorClass = "text-green-400";
+      if (type === 'warn') colorClass = "text-yellow-400";
+      if (type === 'error') colorClass = "text-red-400";
 
-      // 2. Corsproxy.io
-      try {
-        const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(targetUrl)}`);
-        if (res.ok) return await res.json();
-      } catch (e) {}
-
-      // 3. Allorigins fallback
-      try {
-        const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`);
-        if (res.ok) return await res.json();
-      } catch (e) {}
-
-      throw new Error("All fetch attempts failed.");
+      const line = document.createElement("div");
+      line.className = colorClass;
+      line.innerText = `[${time}] ${msg}`;
+      logBox.appendChild(line);
+      logBox.scrollTop = logBox.scrollHeight;
     }
 
-    // FAA AIRPORT DATA FETCHER
+    function clearLog() {
+      document.getElementById("debug_log").innerHTML = `<div>[SYSTEM] Log cleared.</div>`;
+    }
+
+    // AIRPORT DATA FETCHER WITH MULTI-PROXY FALLBACK LOGGING
     async function fetchAirportData() {
       const icao = document.getElementById("icao").value.trim().toUpperCase();
       const statusEl = document.getElementById("status_msg");
@@ -186,59 +194,102 @@
 
       if (!icao) return alert("Enter an ICAO code.");
 
-      const faaIdent = icao.length === 4 && icao.startsWith("K") ? icao.substring(1) : icao;
-
+      logMsg(`--- START AIRPORT IMPORT: ${icao} ---`);
       statusEl.classList.remove("hidden");
-      statusEl.innerText = `Fetching FAA data for ${icao}...`;
+      statusEl.innerText = `Loading airport data for ${icao}...`;
       btn.disabled = true;
 
-      try {
-        const url = `https://av-info.faa.gov/api/v2/airport/ident/${faaIdent}`;
-        const data = await fetchWithProxy(url);
+      // 1. Local Database Lookup
+      if (typeof AIRPORTS !== 'undefined' && AIRPORTS[icao]) {
+        logMsg(`Found ${icao} in local AIRPORTS database!`);
+        const apt = AIRPORTS[icao];
+        document.getElementById("elev").value = apt.elev;
+        
+        const rwySelect = document.getElementById("rwy_select");
+        rwySelect.innerHTML = "";
+        
+        apt.rwys.forEach(rwy => {
+          const opt = document.createElement("option");
+          opt.value = `${rwy.hdg},${rwy.len}`;
+          opt.innerText = `Rwy ${rwy.name} (${rwy.len} FT)`;
+          rwySelect.appendChild(opt);
+        });
 
-        if (data && data.airport) {
-          const apt = data.airport;
-          
-          if (apt.elevation) {
-            document.getElementById("elev").value = Math.round(apt.elevation);
-          }
+        const customOpt = document.createElement("option");
+        customOpt.value = "custom";
+        customOpt.innerText = "Custom Runway...";
+        rwySelect.appendChild(customOpt);
 
-          const rwySelect = document.getElementById("rwy_select");
-          rwySelect.innerHTML = "";
-
-          if (apt.runways && apt.runways.length > 0) {
-            apt.runways.forEach(rwy => {
-              const len = rwy.length || 0;
-              const hdg1 = parseInt(rwy.ident.replace(/\D/g, '')) * 10 || 0;
-              
-              const opt1 = document.createElement("option");
-              opt1.value = `${hdg1},${len}`;
-              opt1.innerText = `Rwy ${rwy.ident} (${len} FT)`;
-              rwySelect.appendChild(opt1);
-            });
-
-            // Add Custom option
-            const customOpt = document.createElement("option");
-            customOpt.value = "custom";
-            customOpt.innerText = "Custom Runway...";
-            rwySelect.appendChild(customOpt);
-
-            selectRunway();
-          }
-
-          statusEl.innerText = `Airport Data Imported: ${apt.name || icao}`;
-          statusEl.className = "text-xs text-green-600 font-semibold";
-        } else {
-          statusEl.innerText = `US Airport ${icao} not found in FAA database.`;
-          statusEl.className = "text-xs text-red-500 font-semibold";
-        }
-      } catch (e) {
-        console.error("FAA Data Fetch Error:", e);
-        statusEl.innerText = `Could not load FAA airport data. Enter manually.`;
-        statusEl.className = "text-xs text-red-500 font-semibold";
-      } finally {
+        selectRunway();
+        statusEl.innerText = `Airport Data Loaded: ${apt.name}`;
+        statusEl.className = "text-xs text-green-600 font-semibold";
         btn.disabled = false;
+        return;
       }
+
+      logMsg(`Not found in local DB. Querying FAA API...`, 'warn');
+
+      // 2. Multi-URL Attempt Chain
+      const faaIdent = icao.length === 4 && icao.startsWith("K") ? icao.substring(1) : icao;
+      const targetUrl = `https://av-info.faa.gov/api/v2/airport/ident/${faaIdent}`;
+      const urlsToTry = [
+        targetUrl,
+        `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`,
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`
+      ];
+
+      let success = false;
+
+      for (let url of urlsToTry) {
+        logMsg(`Trying endpoint: ${url.substring(0, 60)}...`);
+        try {
+          const res = await fetch(url);
+          logMsg(`Response status: ${res.status}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.airport) {
+              const apt = data.airport;
+              if (apt.elevation) document.getElementById("elev").value = Math.round(apt.elevation);
+
+              const rwySelect = document.getElementById("rwy_select");
+              rwySelect.innerHTML = "";
+
+              if (apt.runways) {
+                apt.runways.forEach(rwy => {
+                  const len = rwy.length || 0;
+                  const hdg = parseInt(rwy.ident.replace(/\D/g, '')) * 10 || 0;
+                  const opt = document.createElement("option");
+                  opt.value = `${hdg},${len}`;
+                  opt.innerText = `Rwy ${rwy.ident} (${len} FT)`;
+                  rwySelect.appendChild(opt);
+                });
+              }
+
+              const customOpt = document.createElement("option");
+              customOpt.value = "custom";
+              customOpt.innerText = "Custom Runway...";
+              rwySelect.appendChild(customOpt);
+
+              selectRunway();
+              statusEl.innerText = `Airport Data Imported: ${apt.name || icao}`;
+              statusEl.className = "text-xs text-green-600 font-semibold";
+              logMsg(`Successfully parsed FAA data for ${icao}!`);
+              success = true;
+              break;
+            }
+          }
+        } catch (err) {
+          logMsg(`Fetch failed on endpoint: ${err.message}`, 'error');
+        }
+      }
+
+      if (!success) {
+        statusEl.innerText = `Could not fetch FAA data. Enter runway specs manually.`;
+        statusEl.className = "text-xs text-red-500 font-semibold";
+        logMsg(`FAA Import failed across all endpoints for ${icao}.`, 'error');
+      }
+
+      btn.disabled = false;
     }
 
     function selectRunway() {
@@ -251,7 +302,7 @@
       }
     }
 
-    // DIRECT METAR FETCHER WITH FIXED REGEX WIND PARSING
+    // DIRECT METAR FETCHER WITH DETAILED LOGGING
     async function fetchMetar() {
       const icaoInput = document.getElementById("icao").value.trim().toUpperCase();
       const statusEl = document.getElementById("status_msg");
@@ -259,55 +310,88 @@
 
       if (!icaoInput) return alert("Please enter a valid ICAO code.");
 
+      logMsg(`--- START METAR IMPORT: ${icaoInput} ---`);
       statusEl.classList.remove("hidden");
       statusEl.innerText = `Fetching METAR for ${icaoInput}...`;
       btn.disabled = true;
 
-      try {
-        const url = `https://aviationweather.gov/api/data/metar?ids=${icaoInput}&format=json`;
-        const data = await fetchWithProxy(url);
+      const metarUrls = [
+        `https://metar.vatsim.net/${icaoInput}`,
+        `https://aviationweather.gov/api/data/metar?ids=${icaoInput}&format=json`,
+        `https://corsproxy.io/?${encodeURIComponent(`https://aviationweather.gov/api/data/metar?ids=${icaoInput}&format=json`)}`
+      ];
 
-        if (data && data.length > 0) {
-          const metar = data[0];
+      let rawMetar = "";
 
-          if (metar.temp !== undefined) {
-            document.getElementById("temp").value = Math.round(metar.temp);
+      for (let url of metarUrls) {
+        logMsg(`Fetching METAR from: ${url.substring(0, 60)}...`);
+        try {
+          const res = await fetch(url);
+          logMsg(`Status: ${res.status}`);
+          if (res.ok) {
+            if (url.includes("vatsim")) {
+              rawMetar = await res.text();
+            } else {
+              const data = await res.json();
+              if (data && data.length > 0) rawMetar = data[0].rawOb || "";
+            }
+            if (rawMetar) {
+              logMsg(`METAR text received: "${rawMetar.trim()}"`);
+              break;
+            }
           }
-
-          if (metar.altim) {
-            const qnh = metar.altim > 100 ? (metar.altim * 0.0295301).toFixed(2) : metar.altim.toFixed(2);
-            document.getElementById("qnh").value = qnh;
-          }
-
-          const raw = metar.rawOb || "";
-          const windMatch = raw.match(/\b(\d{3}|VRB)(\d{2,3})(G\d{2,3})?KT\b/);
-
-          if (windMatch) {
-            const wdir = windMatch[1] === "VRB" ? 0 : parseInt(windMatch[1], 10);
-            const wspd = parseInt(windMatch[2], 10);
-            document.getElementById("wind_dir").value = wdir;
-            document.getElementById("wind_spd").value = wspd;
-          } else {
-            if (metar.wdir !== undefined) document.getElementById("wind_dir").value = metar.wdir === "VRB" ? 0 : metar.wdir;
-            if (metar.wspd !== undefined) document.getElementById("wind_spd").value = metar.wspd;
-          }
-
-          statusEl.innerText = `METAR Imported: ${raw}`;
-          statusEl.className = "text-xs text-green-600 font-semibold";
-          calculate();
-          return;
+        } catch (err) {
+          logMsg(`METAR fetch error: ${err.message}`, 'error');
         }
-
-        statusEl.innerText = `Station ${icaoInput} not found or no current METAR available.`;
-        statusEl.className = "text-xs text-red-500 font-semibold";
-
-      } catch (error) {
-        console.error("METAR Fetch Error:", error);
-        statusEl.innerText = `Unable to fetch METAR automatically. Enter weather manually.`;
-        statusEl.className = "text-xs text-red-500 font-semibold";
-      } finally {
-        btn.disabled = false;
       }
+
+      if (rawMetar) {
+        parseAndApplyMetar(rawMetar);
+        statusEl.innerText = `METAR Imported: ${rawMetar.trim()}`;
+        statusEl.className = "text-xs text-green-600 font-semibold";
+      } else {
+        statusEl.innerText = `Could not fetch METAR for ${icaoInput}.`;
+        statusEl.className = "text-xs text-red-500 font-semibold";
+        logMsg(`All METAR endpoints failed for ${icaoInput}.`, 'error');
+      }
+
+      btn.disabled = false;
+    }
+
+    function parseAndApplyMetar(raw) {
+      logMsg("Parsing METAR strings...");
+
+      // Temp
+      const tempMatch = raw.match(/\b(M?\d{2})\/(M?\d{2})?\b/);
+      if (tempMatch) {
+        let t = tempMatch[1].replace("M", "-");
+        document.getElementById("temp").value = parseInt(t, 10);
+        logMsg(`Parsed Temp: ${t}°C`);
+      }
+
+      // Altimeter
+      const altMatch = raw.match(/\b([AQ])(\d{4})\b/);
+      if (altMatch) {
+        const type = altMatch[1];
+        const val = parseInt(altMatch[2], 10);
+        let qnhVal = 29.92;
+        if (type === 'A') qnhVal = (val / 100).toFixed(2);
+        if (type === 'Q') qnhVal = (val * 0.0295301).toFixed(2);
+        document.getElementById("qnh").value = qnhVal;
+        logMsg(`Parsed Altimeter: ${qnhVal} inHg`);
+      }
+
+      // Winds
+      const windMatch = raw.match(/\b(\d{3}|VRB)(\d{2,3})(G\d{2,3})?KT\b/);
+      if (windMatch) {
+        const wdir = windMatch[1] === "VRB" ? 0 : parseInt(windMatch[1], 10);
+        const wspd = parseInt(windMatch[2], 10);
+        document.getElementById("wind_dir").value = wdir;
+        document.getElementById("wind_spd").value = wspd;
+        logMsg(`Parsed Wind: ${wdir}° @ ${wspd} KTS`);
+      }
+
+      calculate();
     }
 
     function calculate() {
