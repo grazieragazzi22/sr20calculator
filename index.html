@@ -107,6 +107,7 @@
           <p><strong>D.A.:</strong> <span id="out_da">--</span> FT</p>
           <p><strong>HWC / TWC:</strong> <span id="out_wind_comp">--</span></p>
           <p><strong>CWC:</strong> <span id="out_cwc">--</span> KTS</p>
+          <p><strong>WCA:</strong> <span id="out_wca">--</span>°</p>
           <p><strong>T.O.R.:</strong> <span id="out_tor">--</span> FT</p>
           <p><strong>T.O.D. 50:</strong> <span id="out_tod">--</span> FT</p>
           <p><strong>V<sub>R</sub>:</strong> <span id="out_vr">--</span> KIAS</p>
@@ -195,7 +196,6 @@
       }
 
       try {
-        // Query NOAA AviationWeather station endpoint (Open API)
         const res = await fetch(`https://aviationweather.gov/api/data/stationinfo?ids=${icao}&format=json`);
         if (res.ok) {
           const data = await res.json();
@@ -243,7 +243,6 @@
       logMsg(`Fetching NOAA METAR & TAF for ${icao}...`);
       document.getElementById("status_msg").classList.remove("hidden");
 
-      // 1. Fetch METAR
       try {
         const resM = await fetch(`https://aviationweather.gov/api/data/metar?ids=${icao}&format=json`);
         if (resM.ok) {
@@ -258,7 +257,6 @@
         }
       } catch (err) { logMsg(`NOAA METAR fetch failed: ${err.message}`, 'error'); }
 
-      // 2. Fetch TAF
       try {
         const resT = await fetch(`https://aviationweather.gov/api/data/taf?ids=${icao}&format=json`);
         if (resT.ok) {
@@ -328,11 +326,16 @@
       const meanWind = getVal("wind_spd");
       const gustWind = getVal("wind_gust");
       const hwc = Math.round(meanWind * Math.cos(windRad));
+      const cwc = Math.abs(Math.round(meanWind * Math.sin(windRad)));
       
+      // WIND CORRECTION ANGLE FORMULA: WCA = 0.5 * XCW
+      const wca = Math.round(0.5 * cwc);
+
       setTxt("out_pa", Math.round(pa));
       setTxt("out_da", Math.round(da));
       setTxt("out_wind_comp", hwc >= 0 ? `${hwc} KTS HW` : `${Math.abs(hwc)} KTS TW`);
-      setTxt("out_cwc", Math.abs(Math.round(meanWind * Math.sin(windRad))));
+      setTxt("out_cwc", cwc);
+      setTxt("out_wca", wca);
 
       // Lookups
       const tempKey = `${Math.max(0, Math.min(50, Math.round(getVal("temp") / 10) * 10))}_C`;
