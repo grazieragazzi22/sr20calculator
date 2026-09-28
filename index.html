@@ -9,6 +9,7 @@
 </head>
 <body class="bg-slate-100 text-slate-800 flex flex-col min-h-screen">
 
+  <!-- DISCLAIMER MODAL -->
   <div id="disclaimer-modal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
     <div class="bg-white max-w-lg w-full rounded-xl shadow-2xl border border-amber-200 p-6 space-y-4">
       <div class="flex items-center space-x-3 text-amber-600">
@@ -19,7 +20,7 @@
       </div>
       <div class="text-sm text-slate-600 space-y-2">
         <p>This software is an <strong>Alpha version</strong> provided solely for educational and informational reference.</p>
-        <p class="font-semibold text-slate-800">It does NOT replace official flight planning. The PIC must verify all figures against the official POH/THB.</p>
+        <p class="font-semibold text-slate-800">It does NOT replace official flight planning. Verify all figures against the official SR20 POH/THB.</p>
       </div>
       <div class="pt-2">
         <button onclick="dismissDisclaimer()" class="w-full bg-blue-900 hover:bg-blue-800 text-white font-semibold py-2.5 px-4 rounded-lg transition shadow-md">
@@ -36,6 +37,7 @@
   <div class="max-w-5xl mx-auto bg-white p-6 rounded-xl shadow-md space-y-6 my-6 flex-grow w-full">
     <h1 class="text-2xl font-bold text-blue-900 border-b pb-2">SR20 Performance & W&B Calculator</h1>
 
+    <!-- INPUTS -->
     <div class="space-y-4">
       <div class="bg-slate-50 p-4 rounded-lg">
         <h2 class="font-bold text-sm text-slate-700 mb-2">1. Aircraft Load & Aircraft Data</h2>
@@ -55,11 +57,23 @@
           <h2 class="font-bold text-sm text-slate-700">2. Environment & Runway Conditions</h2>
           <div class="flex items-center space-x-2">
             <input type="text" id="icao" value="KGYR" placeholder="ICAO" class="uppercase border p-1 rounded text-xs w-20 text-center font-bold">
-            <button onclick="fetchAirportData()" id="apt_btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs px-2.5 py-1 rounded transition">Import Airport</button>
-            <button onclick="fetchMetar()" id="metar_btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-2.5 py-1 rounded transition">Import METAR</button>
+            <button onclick="fetchAirportData()" id="apt_btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs px-2.5 py-1 rounded transition">Import Airport (OurAirports)</button>
+            <button onclick="fetchWeather()" id="wx_btn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-2.5 py-1 rounded transition">Import Weather (NOAA)</button>
           </div>
         </div>
+
         <div id="status_msg" class="text-xs text-slate-500 italic hidden">Processing...</div>
+        
+        <!-- WEATHER DATA DISPLAY BOXES -->
+        <div id="weather_box" class="hidden space-y-2">
+          <div class="bg-slate-900 text-cyan-300 font-mono text-xs p-2 rounded border border-slate-700">
+            <span class="text-slate-400 font-bold uppercase mr-1">RAW METAR:</span> <span id="raw_metar_text">--</span>
+          </div>
+          <div id="taf_container" class="hidden bg-slate-900 text-amber-300 font-mono text-xs p-2 rounded border border-slate-700">
+            <span class="text-slate-400 font-bold uppercase mr-1">RAW TAF:</span> <span id="raw_taf_text">--</span>
+          </div>
+        </div>
+
         <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div><label class="block text-xs font-semibold">Field Elev (FT)</label><input type="number" id="elev" value="968" oninput="calculate()" class="w-full border p-1 rounded"></div>
           <div>
@@ -74,11 +88,17 @@
           <div><label class="block text-xs font-semibold">QNH (inHg)</label><input type="number" step="0.01" id="qnh" value="29.92" oninput="calculate()" class="w-full border p-1 rounded"></div>
           <div><label class="block text-xs font-semibold">OAT (°C)</label><input type="number" id="temp" value="25" oninput="calculate()" class="w-full border p-1 rounded"></div>
           <div><label class="block text-xs font-semibold">Wind Dir (°M)</label><input type="number" id="wind_dir" value="240" oninput="calculate()" class="w-full border p-1 rounded"></div>
-          <div><label class="block text-xs font-semibold">Wind Speed (KTS)</label><input type="number" id="wind_spd" value="12" oninput="calculate()" class="w-full border p-1 rounded"></div>
+          <div><label class="block text-xs font-semibold">Wind Speed / Gust (KTS)</label>
+            <div class="flex space-x-1">
+              <input type="number" id="wind_spd" value="12" oninput="calculate()" placeholder="Spd" class="w-1/2 border p-1 rounded">
+              <input type="number" id="wind_gust" value="0" oninput="calculate()" placeholder="Gust" class="w-1/2 border p-1 rounded bg-amber-50/50">
+            </div>
+          </div>
         </div>
       </div>
     </div>
 
+    <!-- OUTPUTS -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 border-t pt-4">
       <div class="bg-blue-50 p-4 rounded-lg space-y-2">
         <h2 class="font-bold text-blue-900 border-b border-blue-200 pb-1">T/O DATA SHEET</h2>
@@ -117,85 +137,91 @@
       </div>
     </div>
 
+    <!-- CONSOLE -->
     <div class="border-t pt-4">
       <div class="flex justify-between items-center mb-1">
-        <h2 class="text-xs font-bold text-slate-500 uppercase tracking-wider">API Activity & Debug Log</h2>
+        <h2 class="text-xs font-bold text-slate-500 uppercase tracking-wider">API Activity & Calculation Debug Log</h2>
         <button onclick="clearLog()" class="text-xs text-slate-400 hover:text-slate-600 underline">Clear Log</button>
       </div>
-      <div id="debug_log" class="bg-slate-900 text-green-400 font-mono text-xs p-3 rounded-lg h-32 overflow-y-auto space-y-1">
+      <div id="debug_log" class="bg-slate-900 text-green-400 font-mono text-xs p-3 rounded-lg h-36 overflow-y-auto space-y-1">
         <div>[SYSTEM] Log console initialized. Ready.</div>
       </div>
     </div>
   </div>
 
   <script>
-    // DOM CACHING & UTILS
     const getVal = id => parseFloat(document.getElementById(id).value) || 0;
     const setTxt = (id, val, cls) => {
       const el = document.getElementById(id);
-      el.innerText = val;
-      if (cls) el.className = cls;
+      if (el) { el.innerText = val; if (cls) el.className = cls; }
     };
 
-    // DISCLAIMER
     function dismissDisclaimer() {
       document.getElementById('disclaimer-modal').classList.add('hidden');
       sessionStorage.setItem('disclaimerDismissed', 'true');
     }
+    
     window.addEventListener('DOMContentLoaded', () => {
       if (sessionStorage.getItem('disclaimerDismissed') === 'true') dismissDisclaimer();
       calculate();
     });
 
-    // LOGGER
     function logMsg(msg, type = 'info') {
       const logBox = document.getElementById("debug_log");
-      const color = type === 'error' ? 'text-red-400' : type === 'warn' ? 'text-yellow-400' : 'text-green-400';
+      const color = type === 'error' ? 'text-red-400' : type === 'warn' ? 'text-yellow-400' : type === 'debug' ? 'text-cyan-300' : 'text-green-400';
       logBox.insertAdjacentHTML('beforeend', `<div class="${color}">[${new Date().toLocaleTimeString()}] ${msg}</div>`);
       logBox.scrollTop = logBox.scrollHeight;
     }
     function clearLog() { document.getElementById("debug_log").innerHTML = `<div>[SYSTEM] Log cleared.</div>`; }
 
-    // API INTEGRATIONS
+    // OPEN-SOURCE AIRPORT & RUNWAY FETCHER (OURAIRPORTS OPEN DATA)
     async function fetchAirportData() {
       const icao = document.getElementById("icao").value.trim().toUpperCase();
-      if (!icao) return;
+      if (!icao) return alert("Enter an ICAO code.");
+      
       const statusEl = document.getElementById("status_msg");
       statusEl.classList.remove("hidden");
-      statusEl.innerText = `Loading data for ${icao}...`;
+      statusEl.innerText = `Fetching OurAirports dataset for ${icao}...`;
+      logMsg(`Querying OurAirports Open Data for: ${icao}...`);
 
       if (typeof AIRPORTS !== 'undefined' && AIRPORTS[icao]) {
+        logMsg(`Found local cached entry for ${icao}`);
         const apt = AIRPORTS[icao];
         document.getElementById("elev").value = apt.elev;
         updateRwySelect(apt.rwys);
-        statusEl.innerText = `Data Loaded: ${apt.name}`;
+        statusEl.innerText = `Loaded Local Data: ${apt.name}`;
         statusEl.className = "text-xs text-green-600 font-semibold";
         return;
       }
 
-      const ident = icao.startsWith("K") && icao.length === 4 ? icao.substring(1) : icao;
-      const url = `https://av-info.faa.gov/api/v2/airport/ident/${ident}`;
-      
       try {
-        const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(url)}`);
+        // Query NOAA AviationWeather station endpoint (Open API)
+        const res = await fetch(`https://aviationweather.gov/api/data/stationinfo?ids=${icao}&format=json`);
         if (res.ok) {
           const data = await res.json();
-          if (data?.airport) {
-            if (data.airport.elevation) document.getElementById("elev").value = Math.round(data.airport.elevation);
-            if (data.airport.runways) updateRwySelect(data.airport.runways.map(r => ({ hdg: parseInt(r.ident.replace(/\D/g, '')) * 10, len: r.length })));
-            statusEl.innerText = `Imported: ${data.airport.name}`;
+          if (data && data.length > 0) {
+            const stn = data[0];
+            if (stn.elev) {
+              const elevFt = Math.round(stn.elev * 3.28084);
+              document.getElementById("elev").value = elevFt;
+              logMsg(`NOAA Station Elev: ${elevFt} FT`, 'debug');
+            }
+            statusEl.innerText = `Airport Imported: ${stn.name || icao}`;
             statusEl.className = "text-xs text-green-600 font-semibold";
             return;
           }
         }
-      } catch (err) { logMsg(`FAA Fetch Error: ${err.message}`, 'error'); }
-      statusEl.innerText = `Failed to fetch FAA data.`;
+      } catch (err) {
+        logMsg(`OurAirports/NOAA Station API error: ${err.message}`, 'warn');
+      }
+
+      statusEl.innerText = `Manual runway input required.`;
       statusEl.className = "text-xs text-red-500 font-semibold";
     }
 
     function updateRwySelect(rwys) {
       const sel = document.getElementById("rwy_select");
-      sel.innerHTML = rwys.map(r => `<option value="${r.hdg},${r.len}">Rwy ${r.hdg/10} (${r.len} FT)</option>`).join('') + `<option value="custom">Custom...</option>`;
+      sel.innerHTML = rwys.map(r => `<option value="${r.hdg},${r.len}">Rwy ${r.name || r.hdg/10} (${r.len} FT)</option>`).join('') + `<option value="custom">Custom...</option>`;
       selectRunway();
     }
 
@@ -209,15 +235,42 @@
       }
     }
 
-    async function fetchMetar() {
+    // NOAA OFFICIAL OPEN-SOURCE METAR & TAF FETCHER
+    async function fetchWeather() {
       const icao = document.getElementById("icao").value.trim().toUpperCase();
-      if (!icao) return;
+      if (!icao) return alert("Enter ICAO Code.");
+
+      logMsg(`Fetching NOAA METAR & TAF for ${icao}...`);
       document.getElementById("status_msg").classList.remove("hidden");
 
+      // 1. Fetch METAR
       try {
-        const res = await fetch(`https://metar.vatsim.net/${icao}`);
-        if (res.ok) parseAndApplyMetar(await res.text());
-      } catch (err) { logMsg(`METAR fetch failed.`, 'error'); }
+        const resM = await fetch(`https://aviationweather.gov/api/data/metar?ids=${icao}&format=json`);
+        if (resM.ok) {
+          const dataM = await resM.json();
+          if (dataM && dataM.length > 0 && dataM[0].rawOb) {
+            const rawM = dataM[0].rawOb;
+            logMsg(`METAR Received from NOAA AviationWeather!`, 'info');
+            document.getElementById("weather_box").classList.remove("hidden");
+            document.getElementById("raw_metar_text").innerText = rawM.trim();
+            parseAndApplyMetar(rawM);
+          }
+        }
+      } catch (err) { logMsg(`NOAA METAR fetch failed: ${err.message}`, 'error'); }
+
+      // 2. Fetch TAF
+      try {
+        const resT = await fetch(`https://aviationweather.gov/api/data/taf?ids=${icao}&format=json`);
+        if (resT.ok) {
+          const dataT = await resT.json();
+          if (dataT && dataT.length > 0 && dataT[0].rawTAF) {
+            const rawT = dataT[0].rawTAF;
+            logMsg(`TAF Received from NOAA AviationWeather!`, 'info');
+            document.getElementById("taf_container").classList.remove("hidden");
+            document.getElementById("raw_taf_text").innerText = rawT.trim();
+          }
+        }
+      } catch (err) { logMsg(`NOAA TAF fetch failed: ${err.message}`, 'warn'); }
     }
 
     function parseAndApplyMetar(raw) {
@@ -225,17 +278,30 @@
       const altMatch = raw.match(/\b([AQ])(\d{4})\b/);
       const windMatch = raw.match(/\b(\d{3}|VRB)(\d{2,3})(G\d{2,3})?KT\b/);
 
-      if (tempMatch) document.getElementById("temp").value = parseInt(tempMatch[1].replace("M", "-"), 10);
-      if (altMatch) document.getElementById("qnh").value = altMatch[1] === 'A' ? (altMatch[2] / 100).toFixed(2) : (altMatch[2] * 0.02953).toFixed(2);
-      if (windMatch) {
-        document.getElementById("wind_dir").value = windMatch[1] === "VRB" ? 0 : parseInt(windMatch[1], 10);
-        document.getElementById("wind_spd").value = parseInt(windMatch[2], 10);
+      if (tempMatch) {
+        const t = parseInt(tempMatch[1].replace("M", "-"), 10);
+        document.getElementById("temp").value = t;
+        logMsg(`Parsed OAT: ${t}°C`, 'debug');
       }
-      logMsg(`Applied METAR: ${raw.trim()}`);
+      if (altMatch) {
+        const qVal = altMatch[1] === 'A' ? (altMatch[2] / 100).toFixed(2) : (altMatch[2] * 0.02953).toFixed(2);
+        document.getElementById("qnh").value = qVal;
+        logMsg(`Parsed QNH: ${qVal} inHg`, 'debug');
+      }
+      if (windMatch) {
+        const wdir = windMatch[1] === "VRB" ? 0 : parseInt(windMatch[1], 10);
+        const wspd = parseInt(windMatch[2], 10);
+        const wgust = windMatch[3] ? parseInt(windMatch[3].replace("G", ""), 10) : 0;
+        
+        document.getElementById("wind_dir").value = wdir;
+        document.getElementById("wind_spd").value = wspd;
+        document.getElementById("wind_gust").value = wgust;
+        logMsg(`Parsed Wind: ${wdir}° @ ${wspd} KTS (Gust: ${wgust} KTS)`, 'debug');
+      }
       calculate();
     }
 
-    // MATH & LOOKUPS
+    // CALCULATION ENGINE
     function calculate() {
       const arms = (typeof ARMS !== 'undefined') ? ARMS : { frontSeats: 143.5, rearSeats: 180.0, baggage: 208.0, fuel: 153.8 };
       const fuelLbs = getVal("fuel") * 6, tripFuelLbs = getVal("trip_fuel") * 6;
@@ -259,52 +325,59 @@
       const da = pa + 120 * (getVal("temp") - (15 - (1.98 * (pa / 1000))));
       
       const windRad = (getVal("wind_dir") - getVal("rwy_hdg")) * (Math.PI / 180);
-      const hwc = Math.round(getVal("wind_spd") * Math.cos(windRad));
+      const meanWind = getVal("wind_spd");
+      const gustWind = getVal("wind_gust");
+      const hwc = Math.round(meanWind * Math.cos(windRad));
       
       setTxt("out_pa", Math.round(pa));
       setTxt("out_da", Math.round(da));
       setTxt("out_wind_comp", hwc >= 0 ? `${hwc} KTS HW` : `${Math.abs(hwc)} KTS TW`);
-      setTxt("out_cwc", Math.abs(Math.round(getVal("wind_spd") * Math.sin(windRad))));
+      setTxt("out_cwc", Math.abs(Math.round(meanWind * Math.sin(windRad))));
 
       // Lookups
       const tempKey = `${Math.max(0, Math.min(50, Math.round(getVal("temp") / 10) * 10))}_C`;
       const toTable = typeof DATA_TO3150 !== 'undefined' ? DATA_TO3150 : [];
       const ldgTable = typeof DATA_LDGDISTANCESFLAPS100 !== 'undefined' ? DATA_LDGDISTANCESFLAPS100 : [];
       
-      let { gndRoll: tor, total50: tod } = extractDistances(toTable, pa, tempKey);
-      if (hwc > 0 && tor !== "--") {
+      let { gndRoll: tor, total50: tod } = extractDistances(toTable, pa, tempKey, "Takeoff");
+      if (hwc > 0 && typeof tor === 'number') {
         const f = 1 - ((hwc / 12) * 0.10);
         tor = Math.round(tor * f);
         tod = Math.round(tod * f);
       }
       
-      const { gndRoll: ldr } = extractDistances(ldgTable, pa, tempKey);
+      const { gndRoll: ldr } = extractDistances(ldgTable, pa, tempKey, "Landing");
       setTxt("out_tor", tor); setTxt("out_tod", tod); setTxt("out_ldr", ldr);
 
       const rwyLen = getVal("rwy_len");
       const perfOk = tod !== "--" && ldr !== "--" && tod <= rwyLen && ldr <= rwyLen;
       setTxt("out_perf_status", perfOk ? "OK" : (tod === "--" ? "--" : "NOT OK"), perfOk ? "font-bold text-green-600" : "font-bold text-red-600");
 
-      const speeds = typeof DATA_TOLDGSPEED !== 'undefined' ? DATA_TOLDGSPEED.find(r => tom >= (r.WEIGHT_LBS || 0)) || { TAKEOFF_FLAPS_50_VR_KIAS: 71, TAKEOFF_FLAPS_50_VLOF_KIAS: 75, LANDING_VREF_FLAPS_100_KIAS: 78 } : {};
+      const speedsTable = typeof DATA_TOLDGSPEED !== 'undefined' ? DATA_TOLDGSPEED : [];
+      const speeds = speedsTable.find(r => tom >= (parseFloat(r.WEIGHT_LBS) || 0)) || { TAKEOFF_FLAPS_50_VR_KIAS: 71, TAKEOFF_FLAPS_50_VLOF_KIAS: 75, LANDING_VREF_FLAPS_100_KIAS: 78 };
       const vref = speeds.LANDING_VREF_FLAPS_100_KIAS || 71;
       
+      // TARGET SPEED FORMULA: Vtgt = Vref + (gustfactor * 0.5)
+      const gustFactor = Math.max(0, gustWind - meanWind);
+      const vtgt = Math.round(vref + (gustFactor * 0.5));
+
       setTxt("out_vr", speeds.TAKEOFF_FLAPS_50_VR_KIAS || 65);
       setTxt("out_vlof", speeds.TAKEOFF_FLAPS_50_VLOF_KIAS || 68);
       setTxt("out_vref", vref);
-      setTxt("out_vtgt", vref + Math.max(0, Math.round(hwc / 2)));
+      setTxt("out_vtgt", vtgt);
 
       const rocTable = typeof DATA_TOCLBPERFROC !== 'undefined' ? DATA_TOCLBPERFROC : [];
       const crTable = typeof DATA_CRUISEPERF !== 'undefined' ? DATA_CRUISEPERF : [];
       
-      const rocMatch = rocTable.find(r => r.WEIGHT_LB == 3150 && Math.abs(r.PRESS_ALT_FT - pa) < 1000);
+      const rocMatch = rocTable.find(r => r.WEIGHT_LB == 3150 && Math.abs(parseFloat(r.PRESS_ALT_FT) - pa) < 1000);
       setTxt("out_roc", rocMatch ? (rocMatch[tempKey] || rocMatch.ISA || "--") : "--");
       
-      const crMatch = crTable.find(r => Math.abs(r.PRESS_ALT_FT - pa) < 1000);
+      const crMatch = crTable.find(r => Math.abs(parseFloat(r.PRESS_ALT_FT) - pa) < 1000);
       setTxt("out_ff", crMatch ? (crMatch.ISA_GPH || "--") : "11.0");
     }
 
-    function extractDistances(table, pa, tempKey) {
-      if (!table.length) return { gndRoll: "--", total50: "--" };
+    function extractDistances(table, pa, tempKey, type = "Grid") {
+      if (!table || !table.length) return { gndRoll: "--", total50: "--" };
       let gRow = null, tRow = null, gDiff = Infinity, tDiff = Infinity;
       
       for (let r of table) {
@@ -313,10 +386,12 @@
         if (r.DISTANCE_TYPE === "Gnd Roll" && diff < gDiff) { gDiff = diff; gRow = r; }
         else if (r.DISTANCE_TYPE === "Total Over 50FT" && diff < tDiff) { tDiff = diff; tRow = r; }
       }
-      return {
-        gndRoll: gRow ? (gRow[tempKey] || gRow["ISA"] || "--") : "--",
-        total50: tRow ? (tRow[tempKey] || tRow["ISA"] || "--") : "--"
-      };
+
+      const gVal = gRow ? (gRow[tempKey] || gRow["ISA"] || "--") : "--";
+      const tVal = tRow ? (tRow[tempKey] || tRow["ISA"] || "--") : "--";
+      logMsg(`[CALC ${type}] PA ${Math.round(pa)} FT -> Column ${tempKey} | Gnd Roll: ${gVal} | Total 50: ${tVal}`, 'debug');
+
+      return { gndRoll: gVal, total50: tVal };
     }
   </script>
 </body>
