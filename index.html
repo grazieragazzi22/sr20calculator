@@ -120,7 +120,7 @@
           <p><strong>Landing Weight:</strong> <span id="out_lw">--</span> lbs</p>
           <p><strong>V<sub>REF</sub> (100%):</strong> <span id="out_vref">--</span> KIAS</p>
           <p><strong>V<sub>TGT</sub>:</strong> <span id="out_vtgt">--</span> KIAS</p>
-          <p><strong>Ldg Dist Req:</strong> <span id="out_ldr">--</span> FT</p>
+          <p><strong>Ldg Dist Req (50'):</strong> <span id="out_ldr">--</span> FT</p>
           <p class="col-span-2 pt-2 border-t border-blue-200 mt-1"><strong>Rwy Performance (T/O & Ldg):</strong> <span id="out_perf_status" class="font-bold">--</span></p>
         </div>
       </div>
@@ -328,7 +328,6 @@
       const hwc = Math.round(meanWind * Math.cos(windRad));
       const cwc = Math.abs(Math.round(meanWind * Math.sin(windRad)));
       
-      // WIND CORRECTION ANGLE FORMULA: WCA = 0.5 * XCW
       const wca = Math.round(0.5 * cwc);
 
       setTxt("out_pa", Math.round(pa));
@@ -349,8 +348,16 @@
         tod = Math.round(tod * f);
       }
       
-      const { gndRoll: ldr } = extractDistances(ldgTable, pa, tempKey, "Landing");
-      setTxt("out_tor", tor); setTxt("out_tod", tod); setTxt("out_ldr", ldr);
+      // Use total50 for Landing Distance Required over 50' obstacle
+      let { total50: ldr } = extractDistances(ldgTable, pa, tempKey, "Landing");
+      if (hwc > 0 && typeof ldr === 'number') {
+        const f = 1 - ((hwc / 13) * 0.10);
+        ldr = Math.round(ldr * f);
+      }
+
+      setTxt("out_tor", tor); 
+      setTxt("out_tod", tod); 
+      setTxt("out_ldr", ldr);
 
       const rwyLen = getVal("rwy_len");
       const perfOk = tod !== "--" && ldr !== "--" && tod <= rwyLen && ldr <= rwyLen;
@@ -360,7 +367,6 @@
       const speeds = speedsTable.find(r => tom >= (parseFloat(r.WEIGHT_LBS) || 0)) || { TAKEOFF_FLAPS_50_VR_KIAS: 71, TAKEOFF_FLAPS_50_VLOF_KIAS: 75, LANDING_VREF_FLAPS_100_KIAS: 78 };
       const vref = speeds.LANDING_VREF_FLAPS_100_KIAS || 71;
       
-      // TARGET SPEED FORMULA: Vtgt = Vref + (gustfactor * 0.5)
       const gustFactor = Math.max(0, gustWind - meanWind);
       const vtgt = Math.round(vref + (gustFactor * 0.5));
 
